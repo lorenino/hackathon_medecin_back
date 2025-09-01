@@ -163,39 +163,34 @@ sequenceDiagram
 ## 9) Diagramme d’optimisation de l’application (flux & coûts)
 ```mermaid
 flowchart LR
-  %% Entrée côté client
-  Client[Client (Front/App)] -->|HTTP JSON| API[FastAPI]
+  Client[Client (Front/App)] -->|HTTP_JSON| API[FastAPI]
 
-  %% API et variantes d'appel
-  subgraph API Layer
-    API -->|POST /search| UseStd[search_and_summarize(query, context)]
-    API -->|POST /search/prompt| UseTpl[search_with_prompt(query, template, vars)]
+  subgraph API_Layer
+    API -->|POST_search| UseStd[search_and_summarize(query, context)]
+    API -->|POST_search_prompt| UseTpl[search_with_prompt(query, template, vars)]
   end
 
-  %% Agent interne
   subgraph Agent[WebSearchAgent]
     UseStd --> Ensure[_ensure_agent()]
     UseTpl --> Render[render_template()] --> Ensure
-    Ensure -->|si MISTRAL_AGENT_ID manquant| Create[beta.agents.create(tools=[web_search])]
-    Create --> Persist[Écrire MISTRAL_AGENT_ID dans .env]
+    Ensure -->|if no MISTRAL_AGENT_ID| Create[beta.agents.create(tools=[web_search])]
+    Create --> Persist[Write MISTRAL_AGENT_ID to .env]
     Ensure --> Start[beta.conversations.start(agent_id, inputs)]
-    Start --> Parse[Assembler synthesis + extraire sources]
+    Start --> Parse[Build synthesis + extract sources]
   end
 
-  %% Mistral et recherche web
   Start --> Mistral[Mistral Agents API]
-  Mistral -->|web_search| Web[Web (sources publiques)]
-  Mistral --> Back[Résultats (texte + références)]
+  Mistral -->|web_search| Web[Web sources]
+  Mistral --> Back[Results (text + references)]
 
-  %% Réponse & Observabilité
   Parse --> API
-  subgraph Obs[Observabilité]
-    Metrics[Compteurs: tokens, latence, erreurs] -. futur .-> Dash[Tableau de bord]
-    Cache[(Cache réponses)] -. futur .-> API
+
+  subgraph Obs[Observability]
+    Metrics[Counters: tokens, latency, errors] -. future .-> Dash[Dashboard]
+    Cache[(Response cache)] -. future .-> API
   end
 
-  %% Sortie
-  API -->|JSON {query, synthesis, sources}| Client
+  API -->|JSON_payload| Client
 
   classDef future fill:#fff7e6,stroke:#f0ad4e,color:#333
   class Metrics,Dash,Cache future
