@@ -163,35 +163,32 @@ sequenceDiagram
 ## 9) Diagramme d’optimisation de l’application (flux & coûts)
 ```mermaid
 flowchart LR
-  Client[Client (Front/App)] -->|HTTP_JSON| API[FastAPI]
+  Client[Client] --> API[FastAPI]
 
   subgraph API_Layer
-    API -->|POST_search| UseStd[search_and_summarize(query, context)]
-    API -->|POST_search_prompt| UseTpl[search_with_prompt(query, template, vars)]
+    API --> UseStd[search_and_summarize]
+    API --> UseTpl[search_with_prompt]
   end
 
-  subgraph Agent[WebSearchAgent]
-    UseStd --> Ensure[_ensure_agent()]
-    UseTpl --> Render[render_template()] --> Ensure
-    Ensure -->|if no MISTRAL_AGENT_ID| Create[beta.agents.create(tools=[web_search])]
-    Create --> Persist[Write MISTRAL_AGENT_ID to .env]
-    Ensure --> Start[beta.conversations.start(agent_id, inputs)]
-    Start --> Parse[Build synthesis + extract sources]
+  subgraph Agent
+    UseStd --> Ensure[_ensure_agent]
+    UseTpl --> Render[render_template] --> Ensure
+    Ensure --> Create[create_agent_if_needed]
+    Create --> Persist[write_agent_id]
+    Ensure --> Start[start_conversation]
+    Start --> Parse[build_synthesis_extract_sources]
   end
 
-  Start --> Mistral[Mistral Agents API]
-  Mistral -->|web_search| Web[Web sources]
-  Mistral --> Back[Results (text + references)]
+  Start --> Mistral[Mistral_Agents_API]
+  Mistral --> Web[Web_sources]
+  Mistral --> Back[Results]
 
   Parse --> API
 
-  subgraph Obs[Observability]
-    Metrics[Counters: tokens, latency, errors] -. future .-> Dash[Dashboard]
-    Cache[(Response cache)] -. future .-> API
+  subgraph Obs
+    Metrics[metrics] -.-> Dash[dashboard]
+    Cache[cache] -.-> API
   end
 
-  API -->|JSON_payload| Client
-
-  classDef future fill:#fff7e6,stroke:#f0ad4e,color:#333
-  class Metrics,Dash,Cache future
+  API --> Client
 ```
