@@ -160,43 +160,43 @@ sequenceDiagram
 ```
 
 
-## 9) Diagramme de l’optimisation énergétique (exemple générique)
+## 9) Diagramme d’optimisation de l’application (flux & coûts)
 ```mermaid
 flowchart LR
-  subgraph Sources[Acquisition & Données]
-    Meters[Capteurs / Compteurs (élec, gaz, T°, CO₂)] --> Ingest[Ingestion temps réel]
-    Ingest --> TSDB[(Time‑Series DB)]
-    Ext[Tarifs / Météo / Calendrier / Production PV] --> Ingest
+  %% Entrée côté client
+  Client[Client (Front/App)] -->|HTTP JSON| API[FastAPI]
+
+  %% API et variantes d'appel
+  subgraph API Layer
+    API -->|POST /search| UseStd[search_and_summarize(query, context)]
+    API -->|POST /search/prompt| UseTpl[search_with_prompt(query, template, vars)]
   end
 
-  subgraph IA[Prédiction]
-    TSDB --> Forecast[Prévisions (charge, PV, prix)]
+  %% Agent interne
+  subgraph Agent[WebSearchAgent]
+    UseStd --> Ensure[_ensure_agent()]
+    UseTpl --> Render[render_template()] --> Ensure
+    Ensure -->|si MISTRAL_AGENT_ID manquant| Create[beta.agents.create(tools=[web_search])]
+    Create --> Persist[Écrire MISTRAL_AGENT_ID dans .env]
+    Ensure --> Start[beta.conversations.start(agent_id, inputs)]
+    Start --> Parse[Assembler synthesis + extraire sources]
   end
 
-  subgraph Opti[Moteur d'optimisation]
-    Forecast --> Model[Modèle (contraintes & confort)]
-    Rules[Règles / Politiques / Priorités] --> Model
-    Model --> Solver[Optimiseur (LP/MPC/Heuristiques)]
+  %% Mistral et recherche web
+  Start --> Mistral[Mistral Agents API]
+  Mistral -->|web_search| Web[Web (sources publiques)]
+  Mistral --> Back[Résultats (texte + références)]
+
+  %% Réponse & Observabilité
+  Parse --> API
+  subgraph Obs[Observabilité]
+    Metrics[Compteurs: tokens, latence, erreurs] -. futur .-> Dash[Tableau de bord]
+    Cache[(Cache réponses)] -. futur .-> API
   end
 
-  subgraph Actu[Contrôle & Exécution]
-    Solver --> Setpoints[Consignes (HVAC, stockage, DER)]
-    Setpoints --> Devices[Actionneurs (PAC, batteries, CVC, éclairage)]
-  end
+  %% Sortie
+  API -->|JSON {query, synthesis, sources}| Client
 
-  subgraph Feedback[Boucle de rétroaction]
-    Devices --> Telemetry[Télémétrie]
-    Telemetry --> TSDB
-    KPIs[KPIs: kWh, € économisés, CO₂ évité, confort] --> Report[Reporting]
-    TSDB --> KPIs
-  end
-
-  subgraph Supervision[Supervision]
-    HMI[Interface / Override humain] --> Rules
-    Report --> HMI
-  end
-
-  style Opti fill:#eef7ff,stroke:#6aa9ff
-  style IA fill:#eef7ff,stroke:#6aa9ff
-  style Actu fill:#eef7ff,stroke:#6aa9ff
+  classDef future fill:#fff7e6,stroke:#f0ad4e,color:#333
+  class Metrics,Dash,Cache future
 ```
