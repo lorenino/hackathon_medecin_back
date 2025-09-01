@@ -192,3 +192,45 @@ flowchart LR
 
   API --> Client
 ```
+
+### Explication du flux
+- Client: l’application qui envoie les requêtes HTTP vers l’API.
+- API (FastAPI): reçoit, valide, et route les requêtes vers l’agent.
+- API_Layer/Validate: validation et normalisation des entrées.
+- Cache: vérifie si une réponse existe déjà (clé dérivée de la requête + template + variables). En cas de hit, retourne aussitôt.
+- Agent:
+  - render_template: construit le prompt final à partir du template et des variables.
+  - ensure_agent_id/create_agent_if_needed: garantit l’existence d’un agent Mistral configuré avec web_search.
+  - start_conversation: appelle Mistral (Agents API) pour exécuter la recherche et générer la réponse.
+  - parse_and_format: assemble la synthèse et extrait les sources (références/outils).
+  - enforce_limits: applique une éventuelle limite (ex. nombre de mots) et formatage.
+- Mistral_Agents_API/web_search_tool: effectue la recherche web et retourne des références exploitables.
+- Obs (metrics/logs): points d’instrumentation pour suivre volumes, latence, erreurs, tokens, etc.
+
+## 10) Séquence simplifiée (/search/prompt)
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Client
+  participant API
+  participant Agent
+  participant Mistral
+
+  Client->>API: POST /search/prompt {query, template, vars}
+  API->>API: validate_input
+  API->>Agent: search_with_prompt(query, template, vars)
+  Agent->>Agent: render_template
+  Agent->>Agent: ensure_agent_id
+  alt agent_id_exists
+    Agent-->>Agent: reuse_agent
+  else
+    Agent->>Mistral: create_agent(web_search)
+    Mistral-->>Agent: agent_id
+  end
+  Agent->>Mistral: start_conversation(inputs)
+  Mistral-->>Agent: outputs(text + refs)
+  Agent->>Agent: parse_and_format + enforce_limits
+  Agent-->>API: {synthesis, sources}
+  API-->>Client: JSON response
+```
+
