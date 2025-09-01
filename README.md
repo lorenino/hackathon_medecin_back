@@ -158,3 +158,45 @@ sequenceDiagram
   Agent-->>API: AgentResponse
   API-->>Client: JSON réponse
 ```
+
+
+## 9) Diagramme de l’optimisation énergétique (exemple générique)
+```mermaid
+flowchart LR
+  subgraph Sources[Acquisition & Données]
+    Meters[Capteurs / Compteurs (élec, gaz, T°, CO₂)] --> Ingest[Ingestion temps réel]
+    Ingest --> TSDB[(Time‑Series DB)]
+    Ext[Tarifs / Météo / Calendrier / Production PV] --> Ingest
+  end
+
+  subgraph IA[Prédiction]
+    TSDB --> Forecast[Prévisions (charge, PV, prix)]
+  end
+
+  subgraph Opti[Moteur d'optimisation]
+    Forecast --> Model[Modèle (contraintes & confort)]
+    Rules[Règles / Politiques / Priorités] --> Model
+    Model --> Solver[Optimiseur (LP/MPC/Heuristiques)]
+  end
+
+  subgraph Actu[Contrôle & Exécution]
+    Solver --> Setpoints[Consignes (HVAC, stockage, DER)]
+    Setpoints --> Devices[Actionneurs (PAC, batteries, CVC, éclairage)]
+  end
+
+  subgraph Feedback[Boucle de rétroaction]
+    Devices --> Telemetry[Télémétrie]
+    Telemetry --> TSDB
+    KPIs[KPIs: kWh, € économisés, CO₂ évité, confort] --> Report[Reporting]
+    TSDB --> KPIs
+  end
+
+  subgraph Supervision[Supervision]
+    HMI[Interface / Override humain] --> Rules
+    Report --> HMI
+  end
+
+  style Opti fill:#eef7ff,stroke:#6aa9ff
+  style IA fill:#eef7ff,stroke:#6aa9ff
+  style Actu fill:#eef7ff,stroke:#6aa9ff
+```
