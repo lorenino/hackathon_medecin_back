@@ -12,11 +12,7 @@ pip install -r requirements.txt
 ```
 
 ## 3) Configuration
-1. Copier le fichier d'exemple puis éditer:
-```bash
-cp .env.example .env
-```
-2. Mettre votre clé dans `.env`:
+Créer un fichier `.env` à la racine du projet, puis ajoutez:
 ```
 MISTRAL_API_KEY=VOTRE_CLE
 MISTRAL_MODEL=mistral-large-latest
@@ -38,6 +34,7 @@ Endpoints:
 - `GET  /health` — statut de l'API
 - `POST /search` — recherche standard avec `query` (et optionnel `context`)
 - `POST /search/prompt` — recherche avec template de prompt personnalisé
+- `POST /brief` — génération d’un "Brief Médical Flash" personnalisé pour un médecin (voir exemple plus bas)
 
 Exemples:
 ```bash
@@ -57,6 +54,25 @@ curl -X POST http://localhost:8000/search/prompt \
     "prompt_template": "Tu es un assistant spécialisé en résumé médical... Limite: {{limite}} mots. Style: {{style}}.",
     "variables": {"limite": 180, "style": "bullet points", "specialite": "Médecine générale", "tonalite": "professionnelle", "medicaments": "anticoagulants", "recommandations": "HAS, ESC"}
   }'
+
+# Brief Médical Flash
+curl -X POST http://localhost:8000/brief \
+  -H "Content-Type: application/json" \
+  -d '{
+    "specialite": "Médecine générale",
+    "frequence": "quotidienne",
+    "format_brief": "résumé structuré",
+    "type_contenu": "guidelines + actualités",
+    "style": "bullet points",
+    "thematiques": ["cardiologie", "diabète", "vaccination"],
+    "medicaments": "HAS, ANSM",
+    "recommandations": "HAS, ESC",
+    "formation_continue": "MOOCs, conférences",
+    "tendances_sante_publique": "ECDC, WHO",
+    "limite": 180,
+    "tonalite": "professionnelle"
+  }'
+
 ```
 
 ## 6) Paramètres supportés
@@ -93,7 +109,7 @@ classDiagram
     + query: str
     + synthesis: str
     + sources: List[str]
-  }
+
 
   class SearchRequest {
     + query: str
@@ -106,6 +122,21 @@ classDiagram
     + variables: Dict[str, Any]
   }
 
+  class BriefRequest {
+    + specialite: str
+    + frequence: str
+    + format_brief: str
+    + type_contenu: str
+    + style: str
+    + thematiques: List[str]
+    + medicaments: str
+    + recommandations: str
+    + formation_continue: str
+    + tendances_sante_publique: str
+    + limite: int
+    + tonalite: str
+  }
+
   class SearchResponse {
     + query: str
     + synthesis: str
@@ -115,6 +146,7 @@ classDiagram
   class FastAPIApp {
     + POST /search(SearchRequest) SearchResponse
     + POST /search/prompt(PromptSearchRequest) SearchResponse
+    + POST /brief(BriefRequest) SearchResponse
     + GET /health() dict
   }
 
@@ -198,6 +230,9 @@ sequenceDiagram
   else miss_local
     Agent->>CacheShared: get(signature)
     alt shared_hit
+
+
+
       CacheShared-->>Agent: cached_response
       Agent-->>CacheLocal: put(signature, cached_response)
       Agent-->>API: cached_response
@@ -225,6 +260,9 @@ sequenceDiagram
 
   Note over API,Agent: metrics: tokens, latency, cache_hit_ratio
 ```
+
+> Note: Le diagramme de séquence optimisé ci-dessus est conceptuel et non implémenté dans ce dépôt minimal.
+
 
 **Résumé en mots simples**
 - Avant de relancer une vraie recherche, l’assistant regarde d’abord dans sa mémoire locale, puis partagée.
