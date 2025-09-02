@@ -110,6 +110,7 @@ classDiagram
     + synthesis: str
     + sources: List[str]
 
+  }
 
   class SearchRequest {
     + query: str
