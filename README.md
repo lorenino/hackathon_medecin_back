@@ -125,6 +125,13 @@ classDiagram
   FastAPIApp ..> SearchResponse
 ```
 
+**Résumé en mots simples**
+- L’assistant de recherche reçoit votre question, lance la recherche et fabrique un résumé avec des liens.
+- L’application web expose 3 routes: contrôle de santé, recherche classique, recherche guidée par un texte.
+- Les échanges: question (+ contexte éventuel) à l’aller; au retour: résumé clair et liste des sources.
+- Détail interne: au premier démarrage, l’assistant crée/configure son profil côté service d’IA si nécessaire.
+
+
 ### 8.2 Diagramme de séquence (UML)
 ```mermaid
 sequenceDiagram
@@ -159,78 +166,78 @@ sequenceDiagram
   API-->>Client: JSON réponse
 ```
 
+**Résumé en mots simples**
+- Vous envoyez une question à l’application.
+- L’application la donne à l’assistant qui vérifie qu’il est prêt côté service d’IA.
+- L’assistant interroge le service d’IA qui fait la recherche web et renvoie texte + références.
+- L’assistant renvoie à l’application un résumé propre avec les sources.
+- Variante “avec texte-guide”: même parcours, mais vous fournissez un canevas pour orienter le style du résumé.
 
-## 9) Diagramme d’optimisation de l’application (flux & coûts)
-```mermaid
-flowchart LR
-  Client[Client] --> API[FastAPI]
 
-  subgraph API_Layer
-    API --> UseStd[search_and_summarize]
-    API --> UseTpl[search_with_prompt]
-  end
 
-  subgraph Agent
-    UseStd --> Ensure[_ensure_agent]
-    UseTpl --> Render[render_template] --> Ensure
-    Ensure --> Create[create_agent_if_needed]
-    Create --> Persist[write_agent_id]
-    Ensure --> Start[start_conversation]
-    Start --> Parse[build_synthesis_extract_sources]
-  end
-
-  Start --> Mistral[Mistral_Agents_API]
-  Mistral --> Web[Web_sources]
-  Mistral --> Back[Results]
-
-  Parse --> API
-
-  subgraph Obs
-    Metrics[metrics] -.-> Dash[dashboard]
-    Cache[cache] -.-> API
-  end
-
-  API --> Client
-```
-
-### Explication du flux
-- Client: l’application qui envoie les requêtes HTTP vers l’API.
-- API (FastAPI): reçoit, valide, et route les requêtes vers l’agent.
-- API_Layer/Validate: validation et normalisation des entrées.
-- Cache: vérifie si une réponse existe déjà (clé dérivée de la requête + template + variables). En cas de hit, retourne aussitôt.
-- Agent:
-  - render_template: construit le prompt final à partir du template et des variables.
-  - ensure_agent_id/create_agent_if_needed: garantit l’existence d’un agent Mistral configuré avec web_search.
-  - start_conversation: appelle Mistral (Agents API) pour exécuter la recherche et générer la réponse.
-  - parse_and_format: assemble la synthèse et extrait les sources (références/outils).
-  - enforce_limits: applique une éventuelle limite (ex. nombre de mots) et formatage.
-- Mistral_Agents_API/web_search_tool: effectue la recherche web et retourne des références exploitables.
-- Obs (metrics/logs): points d’instrumentation pour suivre volumes, latence, erreurs, tokens, etc.
-
-## 10) Séquence simplifiée (/search/prompt)
+## 9) Diagramme de séquence optimisé (/search/prompt)
 ```mermaid
 sequenceDiagram
   autonumber
-  participant Client
+  participant User as Client
   participant API
   participant Agent
+  participant CacheLocal
+  participant CacheShared
+  participant VecDB as SimilarIndex
   participant Mistral
 
-  Client->>API: POST /search/prompt {query, template, vars}
+  User->>API: POST /search/prompt {query, template, vars}
   API->>API: validate_input
-  API->>Agent: search_with_prompt(query, template, vars)
-  Agent->>Agent: render_template
-  Agent->>Agent: ensure_agent_id
-  alt agent_id_exists
-    Agent-->>Agent: reuse_agent
-  else
-    Agent->>Mistral: create_agent(web_search)
-    Mistral-->>Agent: agent_id
+  API->>Agent: build_request_signature(query, template, vars)
+
+  Agent->>CacheLocal: get(signature)
+  alt local_hit
+    CacheLocal-->>Agent: cached_response
+    Agent-->>API: cached_response
+  else miss_local
+    Agent->>CacheShared: get(signature)
+    alt shared_hit
+      CacheShared-->>Agent: cached_response
+      Agent-->>CacheLocal: put(signature, cached_response)
+      Agent-->>API: cached_response
+    else miss_shared
+      Agent->>VecDB: find_similar(embedding(signature), topK=3)
+      VecDB-->>Agent: similar_candidates[score]
+      alt similar_above_threshold
+        Agent->>Agent: adapt_result(candidate)
+        Agent-->>CacheLocal: put(signature, adapted_response)
+        Agent-->>CacheShared: put(signature, adapted_response)
+        Agent-->>API: adapted_response
+      else no_good_match
+        Agent->>Agent: render_template
+        Agent->>Agent: ensure_agent_id
+        Agent->>Mistral: start_conversation(inputs)
+        Mistral-->>Agent: outputs(text_refs)
+        Agent->>Agent: parse_and_enforce_limits
+        Agent-->>CacheLocal: put(signature, response)
+        Agent-->>CacheShared: put(signature, response)
+        Agent-->>API: response
+      end
+    end
   end
-  Agent->>Mistral: start_conversation(inputs)
-  Mistral-->>Agent: outputs(text + refs)
-  Agent->>Agent: parse_and_format + enforce_limits
-  Agent-->>API: {synthesis, sources}
-  API-->>Client: JSON response
+  API-->>User: JSON
+
+  Note over API,Agent: metrics: tokens, latency, cache_hit_ratio
 ```
+
+**Résumé en mots simples**
+- Avant de relancer une vraie recherche, l’assistant regarde d’abord dans sa mémoire locale, puis partagée.
+- S’il trouve une réponse identique ou très proche, il la renvoie aussitôt (économie de temps et de coût).
+- Sinon, il effectue la recherche via le service d’IA, prépare le résumé et met en cache la réponse pour la prochaine fois.
+- Le système suit aussi quelques indicateurs simples: rapidité, consommation et taux de réutilisation du cache.
+
+
+### Pistes d’optimisation complémentaires
+- Budgetisation/cutoff: ne pas lancer LLM si coût estimé > budget (p.ex. tokens restants/jour)
+- Batching: regrouper des requêtes proches en une seule conversation (mode “digest”)
+- Paramètres dynamiques: ajuster temperature/top_p selon criticité clinique
+- Filtrage de sources: privilégier HAS, ANSM, PubMed, ESC, ECDC, WHO
+- TTL différenciés: augmenter TTL pour requêtes stables (guidelines), réduire pour actualités
+- Observabilité: suivre tokens prompts/completions/connectors et p95/p99 latence
 
