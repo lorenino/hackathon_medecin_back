@@ -160,54 +160,7 @@ sequenceDiagram
 ```
 
 
-## 9) Diagramme d’optimisation de l’application (flux & coûts)
-```mermaid
-flowchart LR
-  Client[Client] --> API[FastAPI]
-
-  subgraph API_Layer
-    API --> UseStd[search_and_summarize]
-    API --> UseTpl[search_with_prompt]
-  end
-
-  subgraph Agent
-    UseStd --> Ensure[_ensure_agent]
-    UseTpl --> Render[render_template] --> Ensure
-    Ensure --> Create[create_agent_if_needed]
-    Create --> Persist[write_agent_id]
-    Ensure --> Start[start_conversation]
-    Start --> Parse[build_synthesis_extract_sources]
-  end
-
-  Start --> Mistral[Mistral_Agents_API]
-  Mistral --> Web[Web_sources]
-  Mistral --> Back[Results]
-
-  Parse --> API
-
-  subgraph Obs
-    Metrics[metrics] -.-> Dash[dashboard]
-    Cache[cache] -.-> API
-  end
-
-  API --> Client
-```
-
-### Explication du flux
-- Client: l’application qui envoie les requêtes HTTP vers l’API.
-- API (FastAPI): reçoit, valide, et route les requêtes vers l’agent.
-- API_Layer/Validate: validation et normalisation des entrées.
-- Cache: vérifie si une réponse existe déjà (clé dérivée de la requête + template + variables). En cas de hit, retourne aussitôt.
-- Agent:
-  - render_template: construit le prompt final à partir du template et des variables.
-  - ensure_agent_id/create_agent_if_needed: garantit l’existence d’un agent Mistral configuré avec web_search.
-  - start_conversation: appelle Mistral (Agents API) pour exécuter la recherche et générer la réponse.
-  - parse_and_format: assemble la synthèse et extrait les sources (références/outils).
-  - enforce_limits: applique une éventuelle limite (ex. nombre de mots) et formatage.
-- Mistral_Agents_API/web_search_tool: effectue la recherche web et retourne des références exploitables.
-- Obs (metrics/logs): points d’instrumentation pour suivre volumes, latence, erreurs, tokens, etc.
-
-## 10) Diagramme de séquence optimisé (/search/prompt)
+## 9) Diagramme de séquence optimisé (/search/prompt)
 ```mermaid
 sequenceDiagram
   autonumber
