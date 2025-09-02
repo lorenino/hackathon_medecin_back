@@ -125,6 +125,13 @@ classDiagram
   FastAPIApp ..> SearchResponse
 ```
 
+**Résumé en mots simples**
+- L’assistant de recherche reçoit votre question, lance la recherche et fabrique un résumé avec des liens.
+- L’application web expose 3 routes: contrôle de santé, recherche classique, recherche guidée par un texte.
+- Les échanges: question (+ contexte éventuel) à l’aller; au retour: résumé clair et liste des sources.
+- Détail interne: au premier démarrage, l’assistant crée/configure son profil côté service d’IA si nécessaire.
+
+
 ### 8.2 Diagramme de séquence (UML)
 ```mermaid
 sequenceDiagram
@@ -158,6 +165,14 @@ sequenceDiagram
   Agent-->>API: AgentResponse
   API-->>Client: JSON réponse
 ```
+
+**Résumé en mots simples**
+- Vous envoyez une question à l’application.
+- L’application la donne à l’assistant qui vérifie qu’il est prêt côté service d’IA.
+- L’assistant interroge le service d’IA qui fait la recherche web et renvoie texte + références.
+- L’assistant renvoie à l’application un résumé propre avec les sources.
+- Variante “avec texte-guide”: même parcours, mais vous fournissez un canevas pour orienter le style du résumé.
+
 
 
 ## 9) Diagramme de séquence optimisé (/search/prompt)
@@ -210,6 +225,13 @@ sequenceDiagram
 
   Note over API,Agent: metrics: tokens, latency, cache_hit_ratio
 ```
+
+**Résumé en mots simples**
+- Avant de relancer une vraie recherche, l’assistant regarde d’abord dans sa mémoire locale, puis partagée.
+- S’il trouve une réponse identique ou très proche, il la renvoie aussitôt (économie de temps et de coût).
+- Sinon, il effectue la recherche via le service d’IA, prépare le résumé et met en cache la réponse pour la prochaine fois.
+- Le système suit aussi quelques indicateurs simples: rapidité, consommation et taux de réutilisation du cache.
+
 
 ### Pistes d’optimisation complémentaires
 - Budgetisation/cutoff: ne pas lancer LLM si coût estimé > budget (p.ex. tokens restants/jour)
