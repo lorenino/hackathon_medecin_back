@@ -207,30 +207,62 @@ flowchart LR
 - Mistral_Agents_API/web_search_tool: effectue la recherche web et retourne des références exploitables.
 - Obs (metrics/logs): points d’instrumentation pour suivre volumes, latence, erreurs, tokens, etc.
 
-## 10) Séquence simplifiée (/search/prompt)
+## 10) Diagramme de séquence optimisé (/search/prompt)
 ```mermaid
 sequenceDiagram
   autonumber
-  participant Client
+  participant User as Client
   participant API
   participant Agent
+  participant CacheLocal
+  participant CacheShared
+  participant VecDB as SimilarIndex
   participant Mistral
 
-  Client->>API: POST /search/prompt {query, template, vars}
+  User->>API: POST /search/prompt {query, template, vars}
   API->>API: validate_input
-  API->>Agent: search_with_prompt(query, template, vars)
-  Agent->>Agent: render_template
-  Agent->>Agent: ensure_agent_id
-  alt agent_id_exists
-    Agent-->>Agent: reuse_agent
-  else
-    Agent->>Mistral: create_agent(web_search)
-    Mistral-->>Agent: agent_id
+  API->>Agent: build_request_signature(query, template, vars)
+
+  Agent->>CacheLocal: get(signature)
+  alt local_hit
+    CacheLocal-->>Agent: cached_response
+    Agent-->>API: cached_response
+  else miss_local
+    Agent->>CacheShared: get(signature)
+    alt shared_hit
+      CacheShared-->>Agent: cached_response
+      Agent-->>CacheLocal: put(signature, cached_response)
+      Agent-->>API: cached_response
+    else miss_shared
+      Agent->>VecDB: find_similar(embedding(signature), topK=3)
+      VecDB-->>Agent: similar_candidates[score]
+      alt similar_above_threshold
+        Agent->>Agent: adapt_result(candidate)
+        Agent-->>CacheLocal: put(signature, adapted_response)
+        Agent-->>CacheShared: put(signature, adapted_response)
+        Agent-->>API: adapted_response
+      else no_good_match
+        Agent->>Agent: render_template
+        Agent->>Agent: ensure_agent_id
+        Agent->>Mistral: start_conversation(inputs)
+        Mistral-->>Agent: outputs(text_refs)
+        Agent->>Agent: parse_and_enforce_limits
+        Agent-->>CacheLocal: put(signature, response)
+        Agent-->>CacheShared: put(signature, response)
+        Agent-->>API: response
+      end
+    end
   end
-  Agent->>Mistral: start_conversation(inputs)
-  Mistral-->>Agent: outputs(text + refs)
-  Agent->>Agent: parse_and_format + enforce_limits
-  Agent-->>API: {synthesis, sources}
-  API-->>Client: JSON response
+  API-->>User: JSON
+
+  Note over API,Agent: metrics: tokens, latency, cache_hit_ratio
 ```
+
+### Pistes d’optimisation complémentaires
+- Budgetisation/cutoff: ne pas lancer LLM si coût estimé > budget (p.ex. tokens restants/jour)
+- Batching: regrouper des requêtes proches en une seule conversation (mode “digest”)
+- Paramètres dynamiques: ajuster temperature/top_p selon criticité clinique
+- Filtrage de sources: privilégier HAS, ANSM, PubMed, ESC, ECDC, WHO
+- TTL différenciés: augmenter TTL pour requêtes stables (guidelines), réduire pour actualités
+- Observabilité: suivre tokens prompts/completions/connectors et p95/p99 latence
 
